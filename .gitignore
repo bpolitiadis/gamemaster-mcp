@@ -90,6 +90,7 @@ uv.lock
 # Ruff
 .ruff_cache/
 !railway.json
+!vercel.json
 
 # web/ is a Next.js app whose source lives in lib/
 !web/lib/

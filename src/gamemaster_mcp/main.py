@@ -32,7 +32,23 @@ logging.basicConfig(
 if not load_dotenv():
     logger.warning("❌ .env file invalid or not found! Please see README.md for instructions. Using project root instead.")
 
-data_path = Path(os.getenv("GAMEMASTER_STORAGE_DIR", "")).resolve()
+
+def resolve_storage_dir() -> Path:
+    """Resolve the file-storage root.
+
+    Explicit ``GAMEMASTER_STORAGE_DIR`` always wins. On Vercel the filesystem is
+    ephemeral, so an unset value defaults to ``/tmp/gamemaster`` (writable).
+    Otherwise the process working directory is used (MCP client cwd).
+    """
+    configured = os.getenv("GAMEMASTER_STORAGE_DIR", "").strip()
+    if configured:
+        return Path(configured).resolve()
+    if os.getenv("VERCEL"):
+        return Path("/tmp/gamemaster")
+    return Path("").resolve()
+
+
+data_path = resolve_storage_dir()
 logger.debug(f"📂 Data path: {data_path}")
 
 
@@ -876,6 +892,48 @@ class BearerAuthMiddleware:
         await self.app(scope, receive, send)
 
 
+def _http_middleware(path: str) -> list:
+    """Build optional bearer-auth middleware for the Streamable HTTP app."""
+    middleware: list = []
+    token = os.getenv("MCP_AUTH_TOKEN")
+    if token:
+        middleware.append(Middleware(BearerAuthMiddleware, token=token))
+    elif path.rstrip("/") == "/mcp":
+        logger.warning(
+            "⚠️ HTTP transport without MCP_AUTH_TOKEN or a secret MCP_PATH is unauthenticated!"
+        )
+    return middleware
+
+
+def _use_stateless_http() -> bool:
+    """Prefer stateless Streamable HTTP on Vercel / when explicitly requested."""
+    if os.getenv("VERCEL"):
+        return True
+    return os.getenv("FASTMCP_STATELESS_HTTP", "").strip().lower() in ("1", "true", "yes")
+
+
+def create_http_app(
+    path: str | None = None,
+    *,
+    stateless_http: bool | None = None,
+):
+    """Return the Starlette ASGI app for Streamable HTTP (Vercel / uvicorn).
+
+    Defaults to ``stateless_http=True`` so serverless and multi-worker hosts
+    work without session affinity. Pass ``stateless_http=False`` to opt out.
+    """
+    mcp_path = path if path is not None else os.getenv("MCP_PATH", "/mcp")
+    if stateless_http is None:
+        # ASGI entrypoints are typically multi-instance; prefer stateless.
+        stateless_http = True
+    middleware = _http_middleware(mcp_path)
+    return mcp.http_app(
+        path=mcp_path,
+        middleware=middleware or None,
+        stateless_http=stateless_http,
+    )
+
+
 def main() -> None:
     """Main entry point for the D&D MCP Server.
 
@@ -892,13 +950,15 @@ def main() -> None:
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     path = os.getenv("MCP_PATH", "/mcp")
-    middleware = []
-    token = os.getenv("MCP_AUTH_TOKEN")
-    if token:
-        middleware.append(Middleware(BearerAuthMiddleware, token=token))
-    elif path.rstrip("/") == "/mcp":
-        logger.warning("⚠️ HTTP transport without MCP_AUTH_TOKEN or a secret MCP_PATH is unauthenticated!")
-    mcp.run(transport="http", host=host, port=port, path=path, middleware=middleware)
+    middleware = _http_middleware(path)
+    mcp.run(
+        transport="http",
+        host=host,
+        port=port,
+        path=path,
+        middleware=middleware,
+        stateless_http=_use_stateless_http(),
+    )
 
 if __name__ == "__main__":
     main()
