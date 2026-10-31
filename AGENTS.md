@@ -85,6 +85,12 @@ Tools are defined in `src/gamemaster_mcp/main.py` and registered with the existi
 4. Use or extend a Pydantic model for structured data, and use the `storage` API for campaign/event reads and writes so changes follow the existing persistence flow.
 5. Return a clear string response and add or update pytest coverage for the behavior.
 
+## Remote deployment and authentication
+
+Set `MCP_TRANSPORT=http` to serve Streamable HTTP (default `stdio`); `HOST`, `PORT` and `MCP_PATH` (default `/mcp`) configure it, and `/health` is an unauthenticated liveness route. See `DEPLOY.md`, `Dockerfile` and `railway.json`.
+
+Auth decision: Claude custom connectors (web/mobile) support either no authentication or OAuth 2.0 (dynamic client registration, optionally a pre-set client ID/secret); they cannot send a static `Authorization` header. A full OAuth server is not implemented yet. Instead the endpoint is protected by an unguessable secret URL path (`MCP_PATH=/mcp/<random>`, treat the URL as a password and rotate it if leaked) and, for header-capable clients, an optional `MCP_AUTH_TOKEN` bearer check (`BearerAuthMiddleware` in `main.py`). Note that with `MCP_AUTH_TOKEN` set, Claude web/mobile cannot connect. For multi-user use, move to FastMCP's OAuth providers (e.g. GitHub/Google) as a follow-up. `DATABASE_URL` is reserved for the PostgreSQL roadmap item; storage is still JSON files.
+
 ## Roadmap
 
 - Replace or augment JSON file storage with PostgreSQL storage.

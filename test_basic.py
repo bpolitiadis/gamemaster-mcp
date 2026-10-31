@@ -62,5 +62,22 @@ def test_ability_score_modifier():
         assert ability.mod == expected_modifier, f"Score {score} should have modifier {expected_modifier}, got {ability.mod}"
 
 
+def test_health_endpoint_and_bearer_auth():
+    """Test /health is open and the MCP path honours the optional bearer token."""
+    from starlette.middleware import Middleware
+    from starlette.testclient import TestClient
+
+    from gamemaster_mcp.main import BearerAuthMiddleware, mcp
+
+    app = mcp.http_app(middleware=[Middleware(BearerAuthMiddleware, token="s3cret")])
+    with TestClient(app) as client:
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+        assert client.get("/mcp").status_code == 401
+        assert client.get("/mcp", headers={"Authorization": "******"}).status_code == 401
+        assert client.get("/mcp", headers={"Authorization": "Bearer " + "s3cret"}).status_code != 401
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
