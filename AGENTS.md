@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Gamemaster MCP is a Python server that exposes Dungeons & Dragons campaign-management tools to MCP clients. It uses FastMCP to register tools, Pydantic v2 models to validate campaign data, and JSON files for persistence.
+Gamemaster MCP is a Python server that exposes Dungeons & Dragons campaign-management tools to MCP clients. It uses FastMCP to register tools, Pydantic v2 models to validate campaign data, and either JSON files or Postgres for persistence.
 
 The project requires Python 3.12 or newer and uses `uv` for environment and package management. Runtime dependencies are FastMCP, Pydantic, python-dotenv, shortuuid, and typing-extensions. Development dependencies include pytest, Ruff, mypy, and pre-commit.
 
@@ -33,11 +33,15 @@ The `gamemaster-mcp` command is also available after activating the virtual envi
 
 - `src/gamemaster_mcp/main.py` creates the FastMCP server, initializes storage, registers campaign tools, and defines the server entry point.
 - `src/gamemaster_mcp/models.py` defines Pydantic campaign, character, world, session, event, and statistics models.
-- `src/gamemaster_mcp/storage.py` implements `DnDStorage`, the JSON-file persistence layer and in-memory active campaign/event access.
+- `src/gamemaster_mcp/storage.py` defines the `StorageBackend` interface (in-memory active campaign/event access plus persistence hooks), `FileStorage` (JSON files; `DnDStorage` is an alias), and `create_storage()`, which picks the backend.
+- `src/gamemaster_mcp/postgres_storage.py` implements `PostgresStorage` (JSONB rows, psycopg).
+- `db/migrations/001_init.sql` is the idempotent Postgres schema, shared with any separate web app.
+- `test_storage.py` runs the same tests against both backends.
 - `src/gamemaster_mcp/logutils.py` initializes the shared `gamemaster-mcp` logger.
 - `src/gamemaster_mcp/__init__.py` exposes the package API; `src/gamemaster_mcp/__main__.py` supports running the package as a module.
 - `src/main.py` is a top-level CLI wrapper around the package server.
 - `test_basic.py` contains the current pytest tests for server initialization, storage initialization, and model behavior.
+- `web/` is the Next.js DM screen (see [Web DM screen](#web-dm-screen)); `db/migrations/` holds the Supabase Postgres schema it reads.
 - `docs/` contains development, storage, roadmap, and FastMCP reference documentation.
 - `example/dnd/` contains example campaign documentation.
 
@@ -60,6 +64,14 @@ Campaign filenames are formed from the campaign name by retaining only alphanume
 On startup, storage creates the directories, loads the campaign JSON file with the newest modification time (if any), and loads the global event log (if present). Explicitly loading a campaign reads the matching campaign file and makes that campaign active. Creating or updating campaign data serializes the model with Pydantic's JSON-mode dump and writes the campaign file; adding an event rewrites the global event file. Storage mutation methods generally save immediately. Changes made directly to an in-memory model must be followed by a save through storage to persist them.
 
 The `.env.example` file shows the `GAMEMASTER_STORAGE_DIR` setting. The older `docs/STORAGE_STRUCTURE.md` describes `dnd_data/` as the default layout; that is the default for a direct `DnDStorage()` construction, not for the MCP application's current initialization when the setting is empty.
+
+## Storage backends and environment variables
+
+- `GAMEMASTER_STORAGE_DIR`: data root for `FileStorage` (see above).
+- `DATABASE_URL`: when set and non-empty, the server uses `PostgresStorage` (target: Supabase Postgres, a libpq URL or `key=value` connection string) and ignores `GAMEMASTER_STORAGE_DIR`. On startup it applies the SQL files in `db/migrations/` (idempotent).
+- `TEST_DATABASE_URL`: tests only; enables the Postgres tests in `test_storage.py` (they drop and recreate the tables, so use a throwaway database). CI provides a Postgres service container.
+
+Postgres has one table per entity (`campaigns`, `characters`, `npcs`, `locations`, `quests`, `encounters`, `sessions`, `events`) plus `game_state`. Each row has `id`, `campaign_id`, `name`, `created_at`, `updated_at`, and a JSONB `data` column with the full Pydantic model (`campaigns.data` omits the child entities, which live in their own tables). Events remain global; their `campaign_id` is the campaign active when added.
 
 ## Data models and relationships
 
@@ -89,11 +101,23 @@ Tools are defined in `src/gamemaster_mcp/main.py` and registered with the existi
 
 Set `MCP_TRANSPORT=http` to serve Streamable HTTP (default `stdio`); `HOST`, `PORT` and `MCP_PATH` (default `/mcp`) configure it, and `/health` is an unauthenticated liveness route. See `DEPLOY.md`, `Dockerfile` and `railway.json`.
 
-Auth decision: Claude custom connectors (web/mobile) support either no authentication or OAuth 2.0 (dynamic client registration, optionally a pre-set client ID/secret); they cannot send a static `Authorization` header. A full OAuth server is not implemented yet. Instead the endpoint is protected by an unguessable secret URL path (`MCP_PATH=/mcp/<random>`, treat the URL as a password and rotate it if leaked) and, for header-capable clients, an optional `MCP_AUTH_TOKEN` bearer check (`BearerAuthMiddleware` in `main.py`). Note that with `MCP_AUTH_TOKEN` set, Claude web/mobile cannot connect. For multi-user use, move to FastMCP's OAuth providers (e.g. GitHub/Google) as a follow-up. `DATABASE_URL` is reserved for the PostgreSQL roadmap item; storage is still JSON files.
+Auth decision: Claude custom connectors (web/mobile) support either no authentication or OAuth 2.0 (dynamic client registration, optionally a pre-set client ID/secret); they cannot send a static `Authorization` header. A full OAuth server is not implemented yet. Instead the endpoint is protected by an unguessable secret URL path (`MCP_PATH=/mcp/<random>`, treat the URL as a password and rotate it if leaked) and, for header-capable clients, an optional `MCP_AUTH_TOKEN` bearer check (`BearerAuthMiddleware` in `main.py`). Note that with `MCP_AUTH_TOKEN` set, Claude web/mobile cannot connect. For multi-user use, move to FastMCP's OAuth providers (e.g. GitHub/Google) as a follow-up. Set `DATABASE_URL` to use Postgres storage instead of JSON files.
+
+## Web DM screen
+
+`/web` is a mobile-first, dark-theme Next.js (App Router, TypeScript, Tailwind) app deployable to Vercel. It reads and writes the Supabase Postgres tables defined in `db/migrations/` (`dm_campaigns`, `dm_characters`, `dm_npcs`, separate from the MCP backend tables). Pages: campaign picker (`/`), party view with +/- HP buttons (`/c/<id>/party`), and NPC list with tap-to-reveal bio (`/c/<id>/npcs`).
+
+Setup:
+
+1. Apply `db/migrations/*.sql` to your Supabase project.
+2. `cd web && cp .env.example .env.local` and set `DM_PASSWORD` (single-DM password gate), `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` (server-side only; never expose it to the browser).
+3. `npm install`, then `npm run dev` (http://localhost:3000), `npm run build`, `npm run lint`.
+
+For Vercel, set the project root directory to `web` and define the same three environment variables. Each page and server action checks the `dm_auth` cookie via `web/lib/auth.ts`.
 
 ## Roadmap
 
 - Replace or augment JSON file storage with PostgreSQL storage.
 - Support remote deployment over HTTP.
 - Improve MCP tool descriptions.
-- Add a Next.js web UI in `/web`.
+- Extend the Next.js web UI in `/web`.

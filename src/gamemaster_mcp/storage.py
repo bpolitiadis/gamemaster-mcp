@@ -1,11 +1,13 @@
 """
 Storage layer for the D&D MCP Server.
-Handles persistence of campaign data to JSON files.
+Defines the StorageBackend interface and the JSON-file implementation (FileStorage).
 """
 
 import logging
 import shortuuid
 import json
+import os
+from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
 
@@ -26,108 +28,51 @@ def new_uuid() -> str:
     """Generate a new random 8-character UUID."""
     return shortuuid.random(length=8)
 
-class DnDStorage:
-    """Handles storage and retrieval of D&D campaign data."""
+class StorageBackend(ABC):
+    """Interface for D&D campaign storage.
 
-    def __init__(self, data_dir: str | Path = "dnd_data"):
-        self.data_dir = Path(data_dir)
-        logger.debug(f"📂 Initializing DnDStorage with data_dir: {self.data_dir.resolve()}")
-        self.data_dir.mkdir(exist_ok=True)
+    Holds the in-memory active campaign/event state and the domain operations.
+    Concrete backends only implement the persistence hooks.
+    """
 
-        # Create subdirectories if necessary
-        (self.data_dir / "campaigns").mkdir(exist_ok=True)
-        (self.data_dir / "events").mkdir(exist_ok=True)
-        logger.debug("📂 Storage subdirectories ensured.")
+    _current_campaign: Campaign | None
+    _events: list[AdventureEvent]
 
-        self._current_campaign: Campaign | None = None
-        self._events: list[AdventureEvent] = []
-
-        # Load existing data
+    def _init_state(self) -> None:
+        """Load existing data from the backend. Call once the backend is ready."""
+        self._current_campaign = None
+        self._events = []
         logger.debug("📂 Loading initial data...")
         self._load_current_campaign()
         self._load_events()
         logger.debug("✅ Initial data loaded.")
 
-    def _get_campaign_file(self, campaign_name: str | None = None) -> Path:
-        """Get the file path for a campaign."""
-        if campaign_name is None and self._current_campaign:
-            campaign_name = self._current_campaign.name
-        if campaign_name is None:
-            raise ValueError("No campaign name provided and no current campaign")
+    @abstractmethod
+    def _save_campaign(self) -> None:
+        """Persist the current campaign."""
 
-        safe_name = "".join(c for c in campaign_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        return self.data_dir / "campaigns" / f"{safe_name}.json"
+    @abstractmethod
+    def _load_current_campaign(self) -> None:
+        """Load the most recently used campaign, if any."""
 
-    def _get_events_file(self) -> Path:
-        """Get the file path for adventure events."""
-        return self.data_dir / "events" / "adventure_log.json"
+    @abstractmethod
+    def _save_events(self) -> None:
+        """Persist adventure events."""
 
-    def _save_campaign(self):
-        """Save the current campaign to disk."""
-        if not self._current_campaign:
-            logger.debug("❌ No current campaign to save.")
-            return
+    @abstractmethod
+    def _load_events(self) -> None:
+        """Load adventure events, if any."""
 
-        campaign_file = self._get_campaign_file()
-        logger.debug(f"💾 Saving campaign '{self._current_campaign.name}' to {campaign_file}")
-        logger.info(f"💾 Autosaving '{self._current_campaign.name}'")
-        campaign_data = self._current_campaign.model_dump(mode='json')
+    @abstractmethod
+    def list_campaigns(self) -> list[str]:
+        """List all available campaigns."""
 
-        with open(campaign_file, 'w', encoding='utf-8') as f:
-            json.dump(campaign_data, f, default=str)
-        logger.debug(f"✅ Campaign '{self._current_campaign.name}' saved successfully.")
+    @abstractmethod
+    def load_campaign(self, name: str) -> Campaign:
+        """Load a specific campaign and make it active.
 
-    def _load_current_campaign(self):
-        """Load the most recently used campaign."""
-        logger.debug("📂 Attempting to load the most recent campaign...")
-        campaigns_dir = self.data_dir / "campaigns"
-        if not campaigns_dir.exists():
-            logger.debug("❌ Campaigns directory does not exist. No campaign loaded.")
-            return
-
-        # Find the most recent campaign file
-        campaign_files = list(campaigns_dir.glob("*.json"))
-        if not campaign_files:
-            logger.debug("❌ No campaign files found.")
-            return
-
-        # Sort by modification time and load the most recent
-        latest_file = max(campaign_files, key=lambda f: f.stat().st_mtime)
-        logger.debug(f"📂 Most recent campaign file is '{latest_file.name}'.")
-
-        try:
-            with open(latest_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            self._current_campaign = Campaign.model_validate(data)
-            logger.info(f"✅ Successfully loaded campaign: {self._current_campaign.name}")
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"❌ Error loading campaign from {latest_file}: {e}")
-
-    def _save_events(self):
-        """Save adventure events to disk."""
-        events_file = self._get_events_file()
-        logger.debug(f"💾 Saving {len(self._events)} events to {events_file}...")
-        events_data = [event.model_dump(mode='json') for event in self._events]
-
-        with open(events_file, 'w', encoding='utf-8') as f:
-            json.dump(events_data, f, default=str)
-        logger.debug("✅ Events saved successfully.")
-
-    def _load_events(self):
-        """Load adventure events from disk."""
-        logger.debug("📂 Attempting to load adventure events...")
-        events_file = self._get_events_file()
-        if not events_file.exists():
-            logger.debug("❌ Adventure log file does not exist. No events loaded.")
-            return
-
-        try:
-            with open(events_file, 'r', encoding='utf-8') as f:
-                events_data = json.load(f)
-            self._events = [AdventureEvent.model_validate(event) for event in events_data]
-            logger.info(f"✅ Successfully loaded {len(self._events)} events.")
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"❌ Error loading events: {e}")
+        Raises FileNotFoundError if it does not exist.
+        """
 
     # Campaign Management
     def create_campaign(self, name: str, description: str, dm_name: str | None = None, setting: str | Path | None = None) -> Campaign:
@@ -150,31 +95,6 @@ class DnDStorage:
 
     def get_current_campaign(self) -> Campaign | None:
         """Get the current campaign."""
-        return self._current_campaign
-
-    def list_campaigns(self) -> list[str]:
-        """List all available campaigns."""
-        campaigns_dir = self.data_dir / "campaigns"
-        if not campaigns_dir.exists():
-            return []
-
-        return [f.stem for f in campaigns_dir.glob("*.json")]
-
-    def load_campaign(self, name: str) -> Campaign:
-        """Load a specific campaign."""
-        logger.info(f"📂 Attempting to load campaign: '{name}'")
-        campaign_file = self._get_campaign_file(name)
-        logger.debug(f"📂 Campaign file path: {campaign_file}")
-
-        if not campaign_file.exists():
-            logger.error(f"❌ Campaign file not found for '{name}'")
-            raise FileNotFoundError(f"Campaign '{name}' not found")
-
-        with open(campaign_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-
-        self._current_campaign = Campaign.model_validate(data)
-        logger.info(f"✅ Successfully loaded campaign '{name}'.")
         return self._current_campaign
 
     def update_campaign(self, **kwargs):
@@ -443,3 +363,139 @@ class DnDStorage:
             event for event in self._events
             if query_lower in event.title.lower() or query_lower in event.description.lower()
         ]
+
+
+class FileStorage(StorageBackend):
+    """Stores D&D campaign data as JSON files."""
+
+    def __init__(self, data_dir: str | Path = "dnd_data"):
+        self.data_dir = Path(data_dir)
+        logger.debug(f"📂 Initializing FileStorage with data_dir: {self.data_dir.resolve()}")
+        self.data_dir.mkdir(exist_ok=True)
+
+        # Create subdirectories if necessary
+        (self.data_dir / "campaigns").mkdir(exist_ok=True)
+        (self.data_dir / "events").mkdir(exist_ok=True)
+        logger.debug("📂 Storage subdirectories ensured.")
+
+        self._init_state()
+
+    def _get_campaign_file(self, campaign_name: str | None = None) -> Path:
+        """Get the file path for a campaign."""
+        if campaign_name is None and self._current_campaign:
+            campaign_name = self._current_campaign.name
+        if campaign_name is None:
+            raise ValueError("No campaign name provided and no current campaign")
+
+        safe_name = "".join(c for c in campaign_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        return self.data_dir / "campaigns" / f"{safe_name}.json"
+
+    def _get_events_file(self) -> Path:
+        """Get the file path for adventure events."""
+        return self.data_dir / "events" / "adventure_log.json"
+
+    def _save_campaign(self):
+        """Save the current campaign to disk."""
+        if not self._current_campaign:
+            logger.debug("❌ No current campaign to save.")
+            return
+
+        campaign_file = self._get_campaign_file()
+        logger.debug(f"💾 Saving campaign '{self._current_campaign.name}' to {campaign_file}")
+        logger.info(f"💾 Autosaving '{self._current_campaign.name}'")
+        campaign_data = self._current_campaign.model_dump(mode='json')
+
+        with open(campaign_file, 'w', encoding='utf-8') as f:
+            json.dump(campaign_data, f, default=str)
+        logger.debug(f"✅ Campaign '{self._current_campaign.name}' saved successfully.")
+
+    def _load_current_campaign(self):
+        """Load the most recently used campaign."""
+        logger.debug("📂 Attempting to load the most recent campaign...")
+        campaigns_dir = self.data_dir / "campaigns"
+        if not campaigns_dir.exists():
+            logger.debug("❌ Campaigns directory does not exist. No campaign loaded.")
+            return
+
+        # Find the most recent campaign file
+        campaign_files = list(campaigns_dir.glob("*.json"))
+        if not campaign_files:
+            logger.debug("❌ No campaign files found.")
+            return
+
+        # Sort by modification time and load the most recent
+        latest_file = max(campaign_files, key=lambda f: f.stat().st_mtime)
+        logger.debug(f"📂 Most recent campaign file is '{latest_file.name}'.")
+
+        try:
+            with open(latest_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            self._current_campaign = Campaign.model_validate(data)
+            logger.info(f"✅ Successfully loaded campaign: {self._current_campaign.name}")
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"❌ Error loading campaign from {latest_file}: {e}")
+
+    def _save_events(self):
+        """Save adventure events to disk."""
+        events_file = self._get_events_file()
+        logger.debug(f"💾 Saving {len(self._events)} events to {events_file}...")
+        events_data = [event.model_dump(mode='json') for event in self._events]
+
+        with open(events_file, 'w', encoding='utf-8') as f:
+            json.dump(events_data, f, default=str)
+        logger.debug("✅ Events saved successfully.")
+
+    def _load_events(self):
+        """Load adventure events from disk."""
+        logger.debug("📂 Attempting to load adventure events...")
+        events_file = self._get_events_file()
+        if not events_file.exists():
+            logger.debug("❌ Adventure log file does not exist. No events loaded.")
+            return
+
+        try:
+            with open(events_file, 'r', encoding='utf-8') as f:
+                events_data = json.load(f)
+            self._events = [AdventureEvent.model_validate(event) for event in events_data]
+            logger.info(f"✅ Successfully loaded {len(self._events)} events.")
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"❌ Error loading events: {e}")
+
+    def list_campaigns(self) -> list[str]:
+        """List all available campaigns."""
+        campaigns_dir = self.data_dir / "campaigns"
+        if not campaigns_dir.exists():
+            return []
+
+        return [f.stem for f in campaigns_dir.glob("*.json")]
+
+    def load_campaign(self, name: str) -> Campaign:
+        """Load a specific campaign."""
+        logger.info(f"📂 Attempting to load campaign: '{name}'")
+        campaign_file = self._get_campaign_file(name)
+        logger.debug(f"📂 Campaign file path: {campaign_file}")
+
+        if not campaign_file.exists():
+            logger.error(f"❌ Campaign file not found for '{name}'")
+            raise FileNotFoundError(f"Campaign '{name}' not found")
+
+        with open(campaign_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        self._current_campaign = Campaign.model_validate(data)
+        logger.info(f"✅ Successfully loaded campaign '{name}'.")
+        return self._current_campaign
+
+
+# Backwards-compatible name for the file-based backend
+DnDStorage = FileStorage
+
+
+def create_storage(data_dir: str | Path = "dnd_data", database_url: str | None = None) -> StorageBackend:
+    """Create the storage backend: Postgres when DATABASE_URL is set, otherwise files."""
+    database_url = database_url if database_url is not None else os.getenv("DATABASE_URL", "")
+    if database_url.strip():
+        from .postgres_storage import PostgresStorage
+
+        return PostgresStorage(database_url.strip())
+    return FileStorage(data_dir)
