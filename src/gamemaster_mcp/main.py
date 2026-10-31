@@ -3,6 +3,7 @@ D&D MCP Server
 A comprehensive D&D campaign management server built with modern FastMCP framework.
 """
 
+import hmac
 import logging
 import random
 import re
@@ -12,6 +13,9 @@ from typing import Annotated, Literal
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 from pydantic import Field
+from starlette.middleware import Middleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from .storage import DnDStorage
 from .models import (
@@ -40,6 +44,12 @@ mcp = FastMCP(
     name="gamemaster-mcp"
 )
 logger.debug("✅ Server initialized, registering tools")
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> JSONResponse:
+    """Liveness probe for hosting platforms (HTTP transport only)."""
+    return JSONResponse({"status": "ok", "service": "gamemaster-mcp"})
 
 
 
@@ -845,9 +855,47 @@ Adjusted XP: {adjusted_xp}
 
 logger.debug("✅ All tools successfully registered. Gamemaster-MCP server running! 🎲")
 
+class BearerAuthMiddleware:
+    """Optional ASGI middleware requiring a matching bearer token (skips /health)."""
+
+    def __init__(self, app, token: str) -> None:  # type: ignore[no-untyped-def]
+        self.app = app
+        self.token = token
+
+    async def __call__(self, scope, receive, send):  # type: ignore[no-untyped-def]
+        if scope["type"] == "http" and scope["path"] != "/health":
+            supplied = dict(scope["headers"]).get(b"authorization", b"").decode()
+            expected = "Bearer " + self.token
+            if not hmac.compare_digest(supplied.encode(), expected.encode()):
+                response = JSONResponse({"error": "unauthorized"}, status_code=401)
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 def main() -> None:
-    """Main entry point for the D&D MCP Server."""
-    mcp.run()
+    """Main entry point for the D&D MCP Server.
+
+    MCP_TRANSPORT selects the transport: `stdio` (default) or `http`
+    (Streamable HTTP, also accepts `streamable-http`).
+    """
+    transport = os.getenv("MCP_TRANSPORT", "stdio").strip().lower()
+    if transport == "stdio":
+        mcp.run()
+        return
+    if transport not in ("http", "streamable-http"):
+        raise SystemExit(f"Unsupported MCP_TRANSPORT '{transport}' (use 'stdio' or 'http')")
+
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    path = os.getenv("MCP_PATH", "/mcp")
+    middleware = []
+    token = os.getenv("MCP_AUTH_TOKEN")
+    if token:
+        middleware.append(Middleware(BearerAuthMiddleware, token=token))
+    elif path.rstrip("/") == "/mcp":
+        logger.warning("⚠️ HTTP transport without MCP_AUTH_TOKEN or a secret MCP_PATH is unauthenticated!")
+    mcp.run(transport="http", host=host, port=port, path=path, middleware=middleware)
 
 if __name__ == "__main__":
     main()
