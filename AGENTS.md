@@ -110,10 +110,10 @@ Auth decision: Claude custom connectors (web/mobile) support either no authentic
 Setup:
 
 1. Apply `db/migrations/*.sql` to your Supabase project.
-2. `cd web && cp .env.example .env.local` and set `DM_PASSWORD` (single-DM password gate), `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` (server-side only; never expose it to the browser).
+2. `cd web && cp .env.example .env.local` and set `DM_PASSWORD`, a random `DM_AUTH_SECRET` of at least 32 characters, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` (server-side only; never expose it to the browser).
 3. `npm install`, then `npm run dev` (http://localhost:3000), `npm run build`, `npm run lint`.
 
-For Vercel, set the project root directory to `web` and define the same three environment variables. Each page and server action checks the `dm_auth` cookie via `web/lib/auth.ts`.
+For Vercel, set the project root directory to `web`, use Node.js 22 or newer, and define the same four environment variables. Each page and server action checks the signed `dm_auth` cookie via `web/lib/auth.ts`.
 
 ## Roadmap
 

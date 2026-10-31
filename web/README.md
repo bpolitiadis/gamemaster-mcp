@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DM Screen
 
-## Getting Started
+The mobile-first DM screen is a Next.js app backed by the `dm_*` tables in Supabase. It is separate from the MCP server's campaign storage.
 
-First, run the development server:
+## Run locally
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Apply [`../db/migrations/002_dm_screen.sql`](../db/migrations/002_dm_screen.sql) to your Supabase project.
+2. Copy `.env.example` to `.env.local` and set `DM_PASSWORD`, `DM_AUTH_SECRET`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`.
+   Generate the signing secret with `openssl rand -hex 32`. Keep the service-role key and signing secret private; do not use either in a `NEXT_PUBLIC_*` variable.
+3. Install and start the app:
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+   ```bash
+   npm install
+   npm run dev
+   ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+4. Open [http://localhost:3000](http://localhost:3000) and sign in with `DM_PASSWORD`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The campaign picker and party/NPC views read from `dm_campaigns`, `dm_characters`, and `dm_npcs`. Add records through the Supabase table editor to populate the screen.
 
 ## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Push the repository to GitHub and import it into [Vercel](https://vercel.com/new).
+2. Set the project **Root Directory** to `web` and the Node.js version to 22 or newer.
+3. Apply the migration above to Supabase.
+4. Add these environment variables in the Vercel project settings for Production (and Preview if needed):
+   - `DM_PASSWORD`: a strong password for the DM screen.
+   - `DM_AUTH_SECRET`: a random secret of at least 32 characters, e.g. `openssl rand -hex 32`.
+   - `SUPABASE_URL`: the Supabase project URL.
+   - `SUPABASE_SERVICE_ROLE_KEY`: the Supabase service-role key.
+5. Deploy. Open the Vercel URL, sign in, and add campaign data in Supabase to view it.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The service-role key is used only by server-side code. The app protects its pages and server actions with a signed, HTTP-only session cookie.

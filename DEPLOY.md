@@ -9,9 +9,13 @@
 | `MCP_PATH` | `/mcp` | URL path of the MCP endpoint. **Make it a long random secret** (see below) |
 | `MCP_AUTH_TOKEN` | unset | Optional `Authorization: Bearer` token |
 | `GAMEMASTER_STORAGE_DIR` | `/data` in Docker | Campaign JSON storage; mount a persistent volume here |
-| `DATABASE_URL` | unset | Reserved for the planned PostgreSQL storage; not used yet |
+| `DATABASE_URL` | unset | PostgreSQL campaign storage; if unset, the server uses JSON files |
 
 `GET /health` returns `{"status":"ok"}` without authentication.
+
+## View the DM screen
+
+The web UI is a separate Next.js app. To deploy it to Vercel and configure its Supabase database, follow [`web/README.md`](web/README.md).
 
 ## Deploy on Railway
 
@@ -35,4 +39,3 @@ docker run -p 8000:8000 -v gm-data:/data -e MCP_PATH=/mcp/changeme gamemaster-mc
 3. Enable the connector in a chat. Connectors added on the web are available in the mobile apps.
 
 Claude custom connectors do not let you enter a static bearer header; see the auth decision in `AGENTS.md`. `MCP_AUTH_TOKEN` is for clients that can send an `Authorization` header whose value is the word Bearer, a space, then your token (Claude Code via `claude mcp add --transport http gamemaster <url> --header`, the API MCP connector, MCP Inspector).
-

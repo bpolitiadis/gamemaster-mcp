@@ -243,6 +243,10 @@ Configure your MCP client to use `uv` to run the server. You only need to provid
 ```
 *Note: Replace `C:\\path\\to\\your\\gamemaster-mcp` with the absolute path to the project directory.*
 
+## Deploy and view the web DM screen
+
+The mobile-first DM screen can be deployed separately to Vercel. See [`web/README.md`](web/README.md) for setup and deployment steps; see [`DEPLOY.md`](DEPLOY.md) to deploy the MCP server remotely.
+
 ## 🎛️ System Prompt Recommendation
 
 For optimal performance, use a system prompt that primes the LLM to act as a knowledgeable Dungeon Master's assistant. This prompt should guide the model to understand the context of D&D campaign management and leverage the provided tools effectively.
