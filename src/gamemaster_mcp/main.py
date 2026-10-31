@@ -57,7 +57,7 @@ def create_campaign(
         Campaign setting - a full description of the setting of the campaign in markdown format, or the path to a `.txt` or `.md` file containing the same.
         """)] = None,
 ) -> str:
-    """Create a new D&D campaign."""
+    """Create and activate a campaign, returning its name; an existing campaign with the same name is overwritten. No campaign needs to be active first."""
     campaign = storage.create_campaign(
         name=name,
         description=description,
@@ -68,7 +68,7 @@ def create_campaign(
 
 @mcp.tool
 def get_campaign_info() -> str:
-    """Get information about the current campaign."""
+    """Return metadata, setting, record counts, and current game-state highlights for the active campaign; unlike list_campaigns, this gives details for one campaign. Does not write data and requires an active campaign."""
     campaign = storage.get_current_campaign()
     if not campaign:
         return "No active campaign."
@@ -94,7 +94,7 @@ def get_campaign_info() -> str:
 
 @mcp.tool
 def list_campaigns() -> str:
-    """List all available campaigns."""
+    """Return saved campaign names and mark the active one, without changing campaign state. Use get_campaign_info for details; no active campaign is required."""
     campaigns = storage.list_campaigns()
     if not campaigns:
         return f"❌ No campaigns found in {storage.data_dir}!"
@@ -113,7 +113,7 @@ def list_campaigns() -> str:
 def load_campaign(
     name: Annotated[str, Field(description="Campaign name to load")]
 ) -> str:
-    """Load a specific campaign."""
+    """Make a saved campaign active and return its name; unlike list_campaigns, this switches the campaign used by subsequent tools. Does not modify the saved campaign and requires an existing campaign with the given name."""
     campaign = storage.load_campaign(name)
     return f"📖 Loaded campaign: '{campaign.name}'. Campaign is now active!"
 
@@ -136,7 +136,7 @@ def create_character(
     wisdom: Annotated[int, Field(description="Wisdom score", ge=1, le=30)] = 10,
     charisma: Annotated[int, Field(description="Charisma score", ge=1, le=30)] = 10,
 ) -> str:
-    """Create a new player character."""
+    """Create a character and return a confirmation; unlike update_character, this adds a new record, replacing any same-name character. Saves immediately in the active campaign, which must be loaded."""
     # Build ability scores
     abilities = {
         "strength": AbilityScore(score=strength),
@@ -166,7 +166,7 @@ def create_character(
 def get_character(
     name_or_id: Annotated[str, Field(description="Character name or ID")]
 ) -> str:
-    """Get detailed character information."""
+    """Return a character's identity, abilities, combat stats, and inventory count; use list_characters for only a roster summary. Does not write data and requires an active campaign."""
     character = storage.get_character(name_or_id)
     if not character:
         return f"❌ Character '{name_or_id}' not found."
@@ -220,7 +220,7 @@ def update_character(
     wisdom: Annotated[int | None, Field(description="Wisdom score", ge=1, le=30)] = None,
     charisma: Annotated[int | None, Field(description="Charisma score", ge=1, le=30)] = None,
 ) -> str:
-    """Update a character's properties."""
+    """Set supplied fields on one character and return the changed values; use bulk_update_characters for numeric changes across multiple characters. Saves immediately in the active campaign; identify a character by name or ID, and use its ID when renaming."""
     character = storage.get_character(name_or_id)
     if not character:
         return f"❌ Character '{name_or_id}' not found."
@@ -247,7 +247,7 @@ def bulk_update_characters(
     wisdom_change: Annotated[int | None, Field(description="Amount to change wisdom by.")] = None,
     charisma_change: Annotated[int | None, Field(description="Amount to change charisma by.")] = None,
 ) -> str:
-    """Update properties for multiple characters at once by a given amount."""
+    """Apply numeric HP or ability-score changes to multiple characters and report updated or missing names; use update_character to set one character's fields directly. Saves each found character in the active campaign, clamping HP and ability scores to valid bounds."""
     updates_log = []
     not_found_log = []
 
@@ -329,7 +329,7 @@ def add_item_to_character(
     weight: Annotated[float | None, Field(description="Item weight", ge=0)] = None,
     value: Annotated[str | None, Field(description="Item value (e.g., '50 gp')")] = None,
 ) -> str:
-    """Add an item to a character's inventory."""
+    """Append an item to a character's inventory and return a confirmation; use update_character for other character fields. Saves immediately in the active campaign; the character must already exist."""
     character = storage.get_character(character_name_or_id)
     if not character:
         return f"❌ Character '{character_name_or_id}' not found!"
@@ -350,7 +350,7 @@ def add_item_to_character(
 
 @mcp.tool
 def list_characters() -> str:
-    """List all characters in the current campaign."""
+    """Return character names with level, race, and class; use get_character for one character's full details. Does not write data and requires an active campaign."""
     characters = storage.list_characters()
     if not characters:
         return "No characters in the current campaign."
@@ -375,7 +375,7 @@ def create_npc(
     attitude: Annotated[Literal["friendly", "neutral", "hostile", "unknown"] | None, Field(description="Attitude towards party")] = None,
     notes: Annotated[str, Field(description="Additional notes")] = "",
 ) -> str:
-    """Create a new NPC."""
+    """Create an NPC and return a confirmation; description is player-facing, while bio is DM-only and may contain secrets. Saves immediately in the active campaign, replacing any same-name NPC; a campaign must be loaded."""
     npc = NPC(
         name=name,
         description=description,
@@ -394,7 +394,7 @@ def create_npc(
 def get_npc(
     name: Annotated[str, Field(description="NPC name")]
 ) -> str:
-    """Get NPC information."""
+    """Return an NPC's details, including player-facing description and DM-only bio that must not be shared with players; use list_npcs for a roster summary. Does not write data and requires an active campaign."""
     npc = storage.get_npc(name)
     if not npc:
         return f"NPC '{name}' not found."
@@ -415,7 +415,7 @@ def get_npc(
 
 @mcp.tool
 def list_npcs() -> str:
-    """List all NPCs in the current campaign."""
+    """Return NPC names and known locations without descriptions or bios; use get_npc for details (including its DM-only bio). Does not write data and requires an active campaign."""
     npcs = storage.list_npcs()
     if not npcs:
         return "No NPCs in the current campaign."
@@ -440,7 +440,7 @@ def create_location(
     notable_features: Annotated[list[str] | None, Field(description="Notable features")] = None,
     notes: Annotated[str, Field(description="Additional notes")] = "",
 ) -> str:
-    """Create a new location."""
+    """Create a location and return its name and type; use get_location for details or list_locations for a roster. Saves immediately in the active campaign, replacing any same-name location; a campaign must be loaded."""
     location = Location(
         name=name,
         location_type=location_type,
@@ -458,7 +458,7 @@ def create_location(
 def get_location(
     name: Annotated[str, Field(description="Location name")]
 ) -> str:
-    """Get location information."""
+    """Return one location's description, population, government, features, and notes; use list_locations for a name-and-type roster. Does not write data and requires an active campaign."""
     location = storage.get_location(name)
     if not location:
         return f"Location '{name}' not found."
@@ -480,7 +480,7 @@ def get_location(
 
 @mcp.tool
 def list_locations() -> str:
-    """List all locations in the current campaign."""
+    """Return location names and types; use get_location for a location's full details. Does not write data and requires an active campaign."""
     locations = storage.list_locations()
     if not locations:
         return "No locations in the current campaign."
@@ -503,7 +503,7 @@ def create_quest(
     reward: Annotated[str | None, Field(description="Quest reward")] = None,
     notes: Annotated[str, Field(description="Additional notes")] = "",
 ) -> str:
-    """Create a new quest."""
+    """Create a quest and return a confirmation; use update_quest to change an existing quest's status or completed objectives. Saves immediately in the active campaign, replacing any same-title quest; a campaign must be loaded."""
     quest = Quest(
         title=title,
         description=description,
@@ -522,7 +522,7 @@ def update_quest(
     status: Annotated[Literal["active", "completed", "failed", "on_hold"] | None, Field(description="New quest status")] = None,
     completed_objective: Annotated[str | None, Field(description="Objective to mark as completed")] = None,
 ) -> str:
-    """Update quest status or complete objectives."""
+    """Set a quest's status and/or mark one listed objective complete, then return a confirmation; use create_quest to add a quest or list_quests to find titles. Saves changes to the active campaign; the quest must exist in a loaded campaign."""
     quest = storage.get_quest(title)
     if not quest:
         return f"Quest '{title}' not found."
@@ -541,7 +541,7 @@ def update_quest(
 def list_quests(
     status: Annotated[Literal["active", "completed", "failed", "on_hold"] | None, Field(description="Filter by status")] = None,
 ) -> str:
-    """List quests, optionally filtered by status."""
+    """Return quest titles and statuses, optionally filtered by status; use update_quest to change one. Does not write data and requires an active campaign."""
     quests = storage.list_quests(status)
 
     if not quests:
@@ -568,7 +568,7 @@ def update_game_state(
     in_combat: Annotated[bool | None, Field(description="Whether party is in combat")] = None,
     notes: Annotated[str | None, Field(description="Current situation notes")] = None,
 ) -> str:
-    """Update the current game state."""
+    """Set only the supplied party or session state fields and return a confirmation; use start_combat/end_combat for combat setup and teardown. Saves immediately and requires an active campaign."""
     kwargs = {}
     if current_location is not None:
         kwargs["current_location"] = current_location
@@ -590,7 +590,7 @@ def update_game_state(
 
 @mcp.tool
 def get_game_state() -> str:
-    """Get the current game state."""
+    """Return the active campaign's session, location, party, combat, and active-quest-count summary; use get_campaign_info for broader campaign metadata. Does not write data and requires an active campaign."""
     game_state = storage.get_game_state()
     if not game_state:
         return "No game state available."
@@ -616,7 +616,7 @@ def get_game_state() -> str:
 def start_combat(
     participants: Annotated[list[dict], Field(description="Combat participants with initiative order")]
 ) -> str:
-    """Start a combat encounter."""
+    """Sort participants by initiative, set combat active and select the first turn, then return the initiative order. Replaces current combat state in the active campaign; use update_game_state for non-combat fields and load a campaign first."""
     # Sort by initiative (highest first)
     initiative_order = sorted(participants, key=lambda x: x.get("initiative", 0), reverse=True)
 
@@ -635,7 +635,7 @@ def start_combat(
 
 @mcp.tool
 def end_combat() -> str:
-    """End the current combat encounter."""
+    """Set combat inactive and clear initiative order and current turn, then return a confirmation; use next_turn to advance ongoing combat. Saves game state and requires an active campaign."""
     storage.update_game_state(
         in_combat=False,
         initiative_order=[],
@@ -645,7 +645,7 @@ def end_combat() -> str:
 
 @mcp.tool
 def next_turn() -> str:
-    """Advance to the next turn in combat."""
+    """Advance cyclically to the next participant and return their name; unlike end_combat, this leaves combat active. Saves the new turn in the active campaign and requires combat with an initiative order."""
     game_state = storage.get_game_state()
     if not game_state or not game_state.in_combat:
         return "Not currently in combat."
@@ -680,7 +680,7 @@ def add_session_note(
     treasure_found: Annotated[list[str] | None, Field(description="Treasure or items found")] = None,
     notes: Annotated[str, Field(description="Additional notes")] = "",
 ) -> str:
-    """Add notes for a game session."""
+    """Append a session summary and its events, attendees, XP, and treasure to the active campaign, then return a confirmation; unlike add_event, this is a campaign session record, not a global event-log entry. Does not replace notes with the same session number; a campaign must be loaded."""
     session_note = SessionNote(
         session_number=session_number,
         title=title,
@@ -697,7 +697,7 @@ def add_session_note(
 
 @mcp.tool
 def get_sessions() -> str:
-    """Get all session notes."""
+    """Return session numbers, dates, titles, and brief summary excerpts; use get_events for the separately stored adventure log. Does not write data and requires an active campaign."""
     sessions = storage.get_sessions()
     if not sessions:
         return "No session notes recorded."
@@ -724,7 +724,7 @@ def add_event(
     importance: Annotated[int, Field(description="Event importance (1-5)", ge=1, le=5)] = 3,
     tags: Annotated[list[str] | None, Field(description="Tags for categorizing the event")] = None,
 ) -> str:
-    """Add an event to the adventure log."""
+    """Append an event to the persistent adventure log shared across campaigns and return a confirmation; unlike add_session_note, this does not add a campaign session record. Does not require an active campaign."""
     event = AdventureEvent(
         event_type=EventType(event_type),
         title=title,
@@ -745,7 +745,7 @@ def get_events(
     event_type: Annotated[Literal["combat", "roleplay", "exploration", "quest", "character", "world", "session"] | None, Field(description="Filter by event type")] = None,
     search: Annotated[str | None, Field(description="Search events by title/description")] = None,
 ) -> str:
-    """Get events from the adventure log."""
+    """Return adventure-log events; without search, limit and event type filter results, while search matches titles and descriptions. Unlike get_sessions, this reads the global log rather than campaign session notes; it does not write data or require an active campaign."""
     if search:
         events = storage.search_events(search)
     else:
@@ -776,7 +776,7 @@ def roll_dice(
     advantage: Annotated[bool, Field(description="Roll with advantage")] = False,
     disadvantage: Annotated[bool, Field(description="Roll with disadvantage")] = False,
 ) -> str:
-    """Roll dice with D&D notation."""
+    """Roll the requested dice and return individual results and the total, optionally using advantage or disadvantage on a single d20. This is random and does not change campaign data; no campaign is required."""
     dice_notation = dice_notation.lower().strip()
 
     # Parse dice notation (e.g., "1d20", "3d6+2", "2d8-1")
@@ -825,7 +825,7 @@ def calculate_experience(
     party_level: Annotated[int, Field(description="Average party level", ge=1, le=20)],
     encounter_xp: Annotated[int, Field(description="Total encounter XP value", ge=0)],
 ) -> str:
-    """Calculate experience points for an encounter."""
+    """Calculate adjusted encounter XP and the per-player share, applying the party-size multiplier; unlike recording a session, this only returns a calculation. Does not write campaign data and requires no active campaign."""
     # D&D 5e encounter multipliers based on party size
     if party_size < 3:
         multiplier = 1.5

@@ -14,6 +14,22 @@ def test_mcp_server_initialization():
     assert "pydantic>=2.0.0" in mcp.dependencies
 
 
+def test_tool_descriptions_are_concise_and_distinguish_related_tools():
+    """Every registered tool should have a concise, useful description."""
+    tools = mcp._tool_manager._tools
+
+    assert tools
+    for tool in tools.values():
+        assert tool.description
+        assert len(tool.description.split(". ")) <= 5
+
+    assert "player-facing" in tools["create_npc"].description
+    assert "DM-only" in tools["create_npc"].description
+    assert "DM-only" in tools["get_npc"].description
+    assert "global" in tools["add_event"].description
+    assert "campaign session" in tools["add_session_note"].description
+
+
 def test_storage_initialization():
     """Test that storage initializes correctly."""
     storage = DnDStorage("test_data")
