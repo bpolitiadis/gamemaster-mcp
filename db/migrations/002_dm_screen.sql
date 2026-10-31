@@ -21,7 +21,7 @@ create table if not exists dm_characters (
   conditions text[] not null default '{}',
   created_at timestamptz not null default now()
 );
-create index if not exists characters_campaign_idx on dm_characters(campaign_id);
+create index if not exists dm_characters_campaign_idx on dm_characters(campaign_id);
 
 create table if not exists dm_npcs (
   id uuid primary key default gen_random_uuid(),
@@ -31,7 +31,7 @@ create table if not exists dm_npcs (
   bio text,         -- DM-only backstory and secrets
   created_at timestamptz not null default now()
 );
-create index if not exists npcs_campaign_idx on dm_npcs(campaign_id);
+create index if not exists dm_npcs_campaign_idx on dm_npcs(campaign_id);
 
 -- Only the server-side service role key is used by /web; block anon access.
 alter table dm_campaigns enable row level security;
