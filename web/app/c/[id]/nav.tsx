@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export function Nav({ id, current }: { id: string; current: "party" | "npcs" }) {
+export function Nav({ id, current }: { id: string; current: "party" | "npcs" | "combat" }) {
   const base = "flex-1 h-14 flex items-center justify-center rounded-xl text-lg font-semibold";
   const on = "bg-indigo-600";
   const off = "bg-zinc-900 border border-zinc-800";
@@ -11,6 +11,7 @@ export function Nav({ id, current }: { id: string; current: "party" | "npcs" }) 
       </Link>
       <Link href={`/c/${id}/party`} className={`${base} ${current === "party" ? on : off}`}>Party</Link>
       <Link href={`/c/${id}/npcs`} className={`${base} ${current === "npcs" ? on : off}`}>NPCs</Link>
+      <Link href={`/c/${id}/combat`} className={`${base} ${current === "combat" ? on : off}`}>Combat</Link>
     </nav>
   );
 }

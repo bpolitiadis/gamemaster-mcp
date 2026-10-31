@@ -353,6 +353,7 @@ class GameState(BaseModel):
     initiative_order: list[dict[str, Any]] = Field(default_factory=list)
     in_combat: bool = False
     current_turn: str | None = None
+    combat_round: int = 1
     notes: str = ""
     updated_at: datetime = Field(default_factory=datetime.now)
 

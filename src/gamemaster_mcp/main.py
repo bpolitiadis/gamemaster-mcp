@@ -633,7 +633,8 @@ def start_combat(
     storage.update_game_state(
         in_combat=True,
         initiative_order=initiative_order,
-        current_turn=initiative_order[0]["name"] if initiative_order else None
+        current_turn=initiative_order[0]["name"] if initiative_order else None,
+        combat_round=1
     )
 
     order_text = "\n".join([
@@ -649,7 +650,8 @@ def end_combat() -> str:
     storage.update_game_state(
         in_combat=False,
         initiative_order=[],
-        current_turn=None
+        current_turn=None,
+        combat_round=1
     )
     return "Combat ended."
 
@@ -674,7 +676,8 @@ def next_turn() -> str:
     next_index = (current_index + 1) % len(game_state.initiative_order)
     next_participant = game_state.initiative_order[next_index]
 
-    storage.update_game_state(current_turn=next_participant["name"])
+    new_round = game_state.combat_round + 1 if next_index == 0 else game_state.combat_round
+    storage.update_game_state(current_turn=next_participant["name"], combat_round=new_round)
 
     return f"**Next Turn:** {next_participant['name']}"
 
