@@ -23,8 +23,9 @@ dependencies = [
     "psycopg[binary]>=3.1",
 ]
 
+# Module path is relative to the repo root (src/main.py → src.main:app).
 [tool.vercel]
-entrypoint = "main:app"
+entrypoint = "src.main:app"
 
 [project.optional-dependencies]
 dev = [

@@ -20,7 +20,7 @@ The web UI is a separate Next.js app. To deploy it to Vercel and configure its S
 
 ## Deploy on Vercel
 
-The repo’s Python project exposes a Streamable HTTP ASGI app as `app` in `src/main.py` (what Vercel’s Python runtime looks for). `vercel.json` sets a 60s function timeout and excludes the Next.js `web/` tree from the Python bundle.
+The repo’s Python project exposes a Streamable HTTP ASGI app as `app` in `src/main.py`. `pyproject.toml` points Vercel at it with `[tool.vercel] entrypoint = "src.main:app"` (module path relative to the repo root). `vercel.json` sets a 60s function timeout and excludes the Next.js `web/` tree from the Python bundle.
 
 1. In the Vercel project linked to this repo, keep the **root directory** at the repository root (not `web/`). Framework should be the auto-detected Python preset.
 2. Deploy from Git (or `vercel --prod`). No build command is required beyond dependency install from `pyproject.toml` / `uv.lock`.
