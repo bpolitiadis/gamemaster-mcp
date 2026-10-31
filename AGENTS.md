@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Gamemaster MCP is a Python server that exposes Dungeons & Dragons campaign-management tools to MCP clients. It uses FastMCP to register tools, Pydantic v2 models to validate campaign data, and JSON files for persistence.
+Gamemaster MCP is a Python server that exposes Dungeons & Dragons campaign-management tools to MCP clients. It uses FastMCP to register tools, Pydantic v2 models to validate campaign data, and either JSON files or Postgres for persistence.
 
 The project requires Python 3.12 or newer and uses `uv` for environment and package management. Runtime dependencies are FastMCP, Pydantic, python-dotenv, shortuuid, and typing-extensions. Development dependencies include pytest, Ruff, mypy, and pre-commit.
 
@@ -33,7 +33,10 @@ The `gamemaster-mcp` command is also available after activating the virtual envi
 
 - `src/gamemaster_mcp/main.py` creates the FastMCP server, initializes storage, registers campaign tools, and defines the server entry point.
 - `src/gamemaster_mcp/models.py` defines Pydantic campaign, character, world, session, event, and statistics models.
-- `src/gamemaster_mcp/storage.py` implements `DnDStorage`, the JSON-file persistence layer and in-memory active campaign/event access.
+- `src/gamemaster_mcp/storage.py` defines the `StorageBackend` interface (in-memory active campaign/event access plus persistence hooks), `FileStorage` (JSON files; `DnDStorage` is an alias), and `create_storage()`, which picks the backend.
+- `src/gamemaster_mcp/postgres_storage.py` implements `PostgresStorage` (JSONB rows, psycopg).
+- `db/migrations/001_init.sql` is the idempotent Postgres schema, shared with any separate web app.
+- `test_storage.py` runs the same tests against both backends.
 - `src/gamemaster_mcp/logutils.py` initializes the shared `gamemaster-mcp` logger.
 - `src/gamemaster_mcp/__init__.py` exposes the package API; `src/gamemaster_mcp/__main__.py` supports running the package as a module.
 - `src/main.py` is a top-level CLI wrapper around the package server.
@@ -60,6 +63,14 @@ Campaign filenames are formed from the campaign name by retaining only alphanume
 On startup, storage creates the directories, loads the campaign JSON file with the newest modification time (if any), and loads the global event log (if present). Explicitly loading a campaign reads the matching campaign file and makes that campaign active. Creating or updating campaign data serializes the model with Pydantic's JSON-mode dump and writes the campaign file; adding an event rewrites the global event file. Storage mutation methods generally save immediately. Changes made directly to an in-memory model must be followed by a save through storage to persist them.
 
 The `.env.example` file shows the `GAMEMASTER_STORAGE_DIR` setting. The older `docs/STORAGE_STRUCTURE.md` describes `dnd_data/` as the default layout; that is the default for a direct `DnDStorage()` construction, not for the MCP application's current initialization when the setting is empty.
+
+## Storage backends and environment variables
+
+- `GAMEMASTER_STORAGE_DIR`: data root for `FileStorage` (see above).
+- `DATABASE_URL`: when set and non-empty, the server uses `PostgresStorage` (target: Supabase Postgres, a libpq URL or `key=value` connection string) and ignores `GAMEMASTER_STORAGE_DIR`. On startup it applies the SQL files in `db/migrations/` (idempotent).
+- `TEST_DATABASE_URL`: tests only; enables the Postgres tests in `test_storage.py` (they drop and recreate the tables, so use a throwaway database). CI provides a Postgres service container.
+
+Postgres has one table per entity (`campaigns`, `characters`, `npcs`, `locations`, `quests`, `encounters`, `sessions`, `events`) plus `game_state`. Each row has `id`, `campaign_id`, `name`, `created_at`, `updated_at`, and a JSONB `data` column with the full Pydantic model (`campaigns.data` omits the child entities, which live in their own tables). Events remain global; their `campaign_id` is the campaign active when added.
 
 ## Data models and relationships
 

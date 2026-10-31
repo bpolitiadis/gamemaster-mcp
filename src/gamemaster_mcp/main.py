@@ -17,7 +17,7 @@ from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from .storage import DnDStorage
+from .storage import create_storage
 from .models import (
     Character, NPC, Location, Quest, SessionNote, AdventureEvent, EventType,
     AbilityScore, CharacterClass, Race, Item
@@ -37,7 +37,7 @@ logger.debug(f"📂 Data path: {data_path}")
 
 
 # Initialize storage and FastMCP server
-storage = DnDStorage(data_dir=data_path)
+storage = create_storage(data_dir=data_path)
 logger.debug("✅ Storage layer initialized")
 
 mcp = FastMCP(
