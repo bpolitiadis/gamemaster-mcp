@@ -39,7 +39,8 @@ The `gamemaster-mcp` command is also available after activating the virtual envi
 - `test_storage.py` runs the same tests against both backends.
 - `src/gamemaster_mcp/logutils.py` initializes the shared `gamemaster-mcp` logger.
 - `src/gamemaster_mcp/__init__.py` exposes the package API; `src/gamemaster_mcp/__main__.py` supports running the package as a module.
-- `src/main.py` is a top-level CLI wrapper around the package server.
+- `src/main.py` is the CLI wrapper and Vercel ASGI entrypoint (`app = create_http_app()`).
+- `vercel.json` configures the Python function (`src/main.py`) for Vercel deploys.
 - `test_basic.py` contains the current pytest tests for server initialization, storage initialization, and model behavior.
 - `web/` is the Next.js DM screen (see [Web DM screen](#web-dm-screen)); `db/migrations/` holds the Supabase Postgres schema it reads.
 - `docs/` contains development, storage, roadmap, and FastMCP reference documentation.
@@ -47,7 +48,7 @@ The `gamemaster-mcp` command is also available after activating the virtual envi
 
 ## Campaign persistence
 
-The running MCP application loads `.env` and reads `GAMEMASTER_STORAGE_DIR` in `src/gamemaster_mcp/main.py`. Its value is resolved to an absolute path and passed to `DnDStorage`. If the variable is unset or empty, the resolved path is the process working directory (typically the MCP client's configured `cwd`). By contrast, directly constructing `DnDStorage()` without a `data_dir` argument uses the relative default `dnd_data` in the current working directory.
+The running MCP application loads `.env` and reads `GAMEMASTER_STORAGE_DIR` in `src/gamemaster_mcp/main.py`. Its value is resolved to an absolute path and passed to `DnDStorage`. If the variable is unset or empty, the resolved path is the process working directory (typically the MCP client's configured `cwd`), except on Vercel (`VERCEL` set) where it defaults to `/tmp/gamemaster` because the function filesystem is ephemeral. By contrast, directly constructing `DnDStorage()` without a `data_dir` argument uses the relative default `dnd_data` in the current working directory.
 
 `DnDStorage` creates the data root and these subdirectories:
 
@@ -99,7 +100,9 @@ Tools are defined in `src/gamemaster_mcp/main.py` and registered with the existi
 
 ## Remote deployment and authentication
 
-Set `MCP_TRANSPORT=http` to serve Streamable HTTP (default `stdio`); `HOST`, `PORT` and `MCP_PATH` (default `/mcp`) configure it, and `/health` is an unauthenticated liveness route. See `DEPLOY.md`, `Dockerfile` and `railway.json`.
+Set `MCP_TRANSPORT=http` to serve Streamable HTTP (default `stdio`); `HOST`, `PORT` and `MCP_PATH` (default `/mcp`) configure it, and `/health` is an unauthenticated liveness route. See `DEPLOY.md`, `Dockerfile`, `railway.json`, and `vercel.json`.
+
+On Vercel, the Python runtime loads `src/main.py` and serves the module-level ASGI `app` (Streamable HTTP via FastMCP `http_app()`, with `stateless_http` enabled). Local stdio/CLI via `gamemaster-mcp` is unchanged. Prefer `DATABASE_URL` on Vercel; file storage under `/tmp` does not persist across cold starts.
 
 Auth decision: Claude custom connectors (web/mobile) support either no authentication or OAuth 2.0 (dynamic client registration, optionally a pre-set client ID/secret); they cannot send a static `Authorization` header. A full OAuth server is not implemented yet. Instead the endpoint is protected by an unguessable secret URL path (`MCP_PATH=/mcp/<random>`, treat the URL as a password and rotate it if leaked) and, for header-capable clients, an optional `MCP_AUTH_TOKEN` bearer check (`BearerAuthMiddleware` in `main.py`). Note that with `MCP_AUTH_TOKEN` set, Claude web/mobile cannot connect. For multi-user use, move to FastMCP's OAuth providers (e.g. GitHub/Google) as a follow-up. Set `DATABASE_URL` to use Postgres storage instead of JSON files.
 

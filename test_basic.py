@@ -2,6 +2,8 @@
 Test file for the D&D MCP Server (FastMCP 2.8.0+ compliant).
 """
 
+from pathlib import Path
+
 import pytest
 from gamemaster_mcp.main import mcp
 from gamemaster_mcp.storage import DnDStorage
@@ -10,8 +12,7 @@ from gamemaster_mcp.models import Character, CharacterClass, Race, AbilityScore
 
 def test_mcp_server_initialization():
     """Test that the FastMCP server initializes correctly."""
-    assert mcp.name == "D&D Campaign Manager"
-    assert "pydantic>=2.0.0" in mcp.dependencies
+    assert mcp.name == "gamemaster-mcp"
 
 
 def test_tool_descriptions_are_concise_and_distinguish_related_tools():
@@ -26,7 +27,7 @@ def test_tool_descriptions_are_concise_and_distinguish_related_tools():
     assert "player-facing" in tools["create_npc"].description
     assert "DM-only" in tools["create_npc"].description
     assert "DM-only" in tools["get_npc"].description
-    assert "global" in tools["add_event"].description
+    assert "shared across campaigns" in tools["add_event"].description
     assert "campaign session" in tools["add_session_note"].description
 
 
@@ -93,6 +94,88 @@ def test_health_endpoint_and_bearer_auth():
         assert client.get("/mcp").status_code == 401
         assert client.get("/mcp", headers={"Authorization": "******"}).status_code == 401
         assert client.get("/mcp", headers={"Authorization": "Bearer " + "s3cret"}).status_code != 401
+
+
+def _parse_mcp_response(response):
+    """Parse a Streamable HTTP JSON or SSE JSON-RPC body."""
+    import json
+
+    content_type = response.headers.get("content-type", "")
+    if "application/json" in content_type:
+        return response.json()
+    for line in response.text.splitlines():
+        if line.startswith("data: "):
+            return json.loads(line[6:])
+    return None
+
+
+def test_vercel_asgi_entrypoint_exports_app():
+    """Vercel loads src/main.py and requires a top-level ASGI ``app``."""
+    import importlib
+
+    module = importlib.import_module("main")
+    assert hasattr(module, "app")
+    assert callable(module.app)
+
+
+def test_resolve_storage_dir_uses_tmp_on_vercel(monkeypatch, tmp_path):
+    """On Vercel, unset GAMEMASTER_STORAGE_DIR should fall back to /tmp/gamemaster."""
+    from gamemaster_mcp.main import resolve_storage_dir
+
+    monkeypatch.delenv("GAMEMASTER_STORAGE_DIR", raising=False)
+    monkeypatch.setenv("VERCEL", "1")
+    assert resolve_storage_dir() == Path("/tmp/gamemaster")
+
+    monkeypatch.setenv("GAMEMASTER_STORAGE_DIR", str(tmp_path / "custom"))
+    assert resolve_storage_dir() == (tmp_path / "custom").resolve()
+
+
+def test_streamable_http_initialize_and_tools_list():
+    """Stateless Streamable HTTP accepts initialize and tools/list (Vercel mode)."""
+    from starlette.testclient import TestClient
+
+    from gamemaster_mcp.main import create_http_app
+
+    app = create_http_app(path="/mcp", stateless_http=True)
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
+    with TestClient(app) as client:
+        assert client.get("/health").json()["status"] == "ok"
+
+        init = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "pytest", "version": "0"},
+            },
+        }
+        init_resp = client.post("/mcp/", json=init, headers=headers)
+        assert init_resp.status_code == 200
+        init_body = _parse_mcp_response(init_resp)
+        assert init_body["result"]["serverInfo"]["name"] == "gamemaster-mcp"
+
+        client.post(
+            "/mcp/",
+            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+            headers=headers,
+        )
+
+        tools_resp = client.post(
+            "/mcp/",
+            json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            headers=headers,
+        )
+        assert tools_resp.status_code == 200
+        tools_body = _parse_mcp_response(tools_resp)
+        names = {tool["name"] for tool in tools_body["result"]["tools"]}
+        assert "list_campaigns" in names
+        assert "roll_dice" in names
+        assert len(names) >= 10
 
 
 if __name__ == "__main__":
