@@ -41,6 +41,7 @@ The `gamemaster-mcp` command is also available after activating the virtual envi
 - `src/gamemaster_mcp/__init__.py` exposes the package API; `src/gamemaster_mcp/__main__.py` supports running the package as a module.
 - `src/main.py` is a top-level CLI wrapper around the package server.
 - `test_basic.py` contains the current pytest tests for server initialization, storage initialization, and model behavior.
+- `web/` is the Next.js DM screen (see [Web DM screen](#web-dm-screen)); `db/migrations/` holds the Supabase Postgres schema it reads.
 - `docs/` contains development, storage, roadmap, and FastMCP reference documentation.
 - `example/dnd/` contains example campaign documentation.
 
@@ -100,11 +101,23 @@ Tools are defined in `src/gamemaster_mcp/main.py` and registered with the existi
 
 Set `MCP_TRANSPORT=http` to serve Streamable HTTP (default `stdio`); `HOST`, `PORT` and `MCP_PATH` (default `/mcp`) configure it, and `/health` is an unauthenticated liveness route. See `DEPLOY.md`, `Dockerfile` and `railway.json`.
 
-Auth decision: Claude custom connectors (web/mobile) support either no authentication or OAuth 2.0 (dynamic client registration, optionally a pre-set client ID/secret); they cannot send a static `Authorization` header. A full OAuth server is not implemented yet. Instead the endpoint is protected by an unguessable secret URL path (`MCP_PATH=/mcp/<random>`, treat the URL as a password and rotate it if leaked) and, for header-capable clients, an optional `MCP_AUTH_TOKEN` bearer check (`BearerAuthMiddleware` in `main.py`). Note that with `MCP_AUTH_TOKEN` set, Claude web/mobile cannot connect. For multi-user use, move to FastMCP's OAuth providers (e.g. GitHub/Google) as a follow-up. `DATABASE_URL` is reserved for the PostgreSQL roadmap item; storage is still JSON files.
+Auth decision: Claude custom connectors (web/mobile) support either no authentication or OAuth 2.0 (dynamic client registration, optionally a pre-set client ID/secret); they cannot send a static `Authorization` header. A full OAuth server is not implemented yet. Instead the endpoint is protected by an unguessable secret URL path (`MCP_PATH=/mcp/<random>`, treat the URL as a password and rotate it if leaked) and, for header-capable clients, an optional `MCP_AUTH_TOKEN` bearer check (`BearerAuthMiddleware` in `main.py`). Note that with `MCP_AUTH_TOKEN` set, Claude web/mobile cannot connect. For multi-user use, move to FastMCP's OAuth providers (e.g. GitHub/Google) as a follow-up. Set `DATABASE_URL` to use Postgres storage instead of JSON files.
+
+## Web DM screen
+
+`/web` is a mobile-first, dark-theme Next.js (App Router, TypeScript, Tailwind) app deployable to Vercel. It reads and writes the Supabase Postgres tables defined in `db/migrations/` (`campaigns`, `characters`, `npcs`). Pages: campaign picker (`/`), party view with +/- HP buttons (`/c/<id>/party`), and NPC list with tap-to-reveal bio (`/c/<id>/npcs`).
+
+Setup:
+
+1. Apply `db/migrations/*.sql` to your Supabase project.
+2. `cd web && cp .env.example .env.local` and set `DM_PASSWORD` (single-DM password gate), `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` (server-side only; never expose it to the browser).
+3. `npm install`, then `npm run dev` (http://localhost:3000), `npm run build`, `npm run lint`.
+
+For Vercel, set the project root directory to `web` and define the same three environment variables. Each page and server action checks the `dm_auth` cookie via `web/lib/auth.ts`.
 
 ## Roadmap
 
 - Replace or augment JSON file storage with PostgreSQL storage.
 - Support remote deployment over HTTP.
 - Improve MCP tool descriptions.
-- Add a Next.js web UI in `/web`.
+- Extend the Next.js web UI in `/web`.
