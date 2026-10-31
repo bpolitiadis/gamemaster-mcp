@@ -6,7 +6,7 @@ export default async function NpcsPage({ params }: PageProps<"/c/[id]/npcs">) {
   await requireAuth();
   const { id } = await params;
   const { data, error } = await db()
-    .from("npcs")
+    .from("dm_npcs")
     .select("id, name, description, bio")
     .eq("campaign_id", id)
     .order("name");

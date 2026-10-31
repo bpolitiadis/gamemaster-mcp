@@ -105,7 +105,7 @@ Auth decision: Claude custom connectors (web/mobile) support either no authentic
 
 ## Web DM screen
 
-`/web` is a mobile-first, dark-theme Next.js (App Router, TypeScript, Tailwind) app deployable to Vercel. It reads and writes the Supabase Postgres tables defined in `db/migrations/` (`campaigns`, `characters`, `npcs`). Pages: campaign picker (`/`), party view with +/- HP buttons (`/c/<id>/party`), and NPC list with tap-to-reveal bio (`/c/<id>/npcs`).
+`/web` is a mobile-first, dark-theme Next.js (App Router, TypeScript, Tailwind) app deployable to Vercel. It reads and writes the Supabase Postgres tables defined in `db/migrations/` (`dm_campaigns`, `dm_characters`, `dm_npcs`, separate from the MCP backend tables). Pages: campaign picker (`/`), party view with +/- HP buttons (`/c/<id>/party`), and NPC list with tap-to-reveal bio (`/c/<id>/npcs`).
 
 Setup:
 

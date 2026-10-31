@@ -1,16 +1,16 @@
 -- Supabase Postgres schema read by the /web DM screen.
 create extension if not exists pgcrypto;
 
-create table if not exists campaigns (
+create table if not exists dm_campaigns (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   description text,
   created_at timestamptz not null default now()
 );
 
-create table if not exists characters (
+create table if not exists dm_characters (
   id uuid primary key default gen_random_uuid(),
-  campaign_id uuid not null references campaigns(id) on delete cascade,
+  campaign_id uuid not null references dm_campaigns(id) on delete cascade,
   name text not null,
   character_class text not null,
   level int not null default 1 check (level between 1 and 20),
@@ -21,19 +21,19 @@ create table if not exists characters (
   conditions text[] not null default '{}',
   created_at timestamptz not null default now()
 );
-create index if not exists characters_campaign_idx on characters(campaign_id);
+create index if not exists characters_campaign_idx on dm_characters(campaign_id);
 
-create table if not exists npcs (
+create table if not exists dm_npcs (
   id uuid primary key default gen_random_uuid(),
-  campaign_id uuid not null references campaigns(id) on delete cascade,
+  campaign_id uuid not null references dm_campaigns(id) on delete cascade,
   name text not null,
   description text, -- public, safe to show players
   bio text,         -- DM-only backstory and secrets
   created_at timestamptz not null default now()
 );
-create index if not exists npcs_campaign_idx on npcs(campaign_id);
+create index if not exists npcs_campaign_idx on dm_npcs(campaign_id);
 
 -- Only the server-side service role key is used by /web; block anon access.
-alter table campaigns enable row level security;
-alter table characters enable row level security;
-alter table npcs enable row level security;
+alter table dm_campaigns enable row level security;
+alter table dm_characters enable row level security;
+alter table dm_npcs enable row level security;

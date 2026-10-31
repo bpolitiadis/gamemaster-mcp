@@ -7,7 +7,7 @@ export default async function PartyPage({ params }: PageProps<"/c/[id]/party">) 
   await requireAuth();
   const { id } = await params;
   const { data, error } = await db()
-    .from("characters")
+    .from("dm_characters")
     .select("id, name, character_class, level, hp_current, hp_max, armor_class, passive_perception, conditions")
     .eq("campaign_id", id)
     .order("name");

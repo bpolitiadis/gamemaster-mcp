@@ -5,7 +5,7 @@ import { db, type Campaign } from "@/lib/supabase";
 
 export default async function CampaignPicker() {
   await requireAuth();
-  const { data, error } = await db().from("campaigns").select("id, name, description").order("name");
+  const { data, error } = await db().from("dm_campaigns").select("id, name, description").order("name");
   const campaigns = (data ?? []) as Campaign[];
   return (
     <main className="flex flex-col gap-4 p-4 max-w-2xl mx-auto w-full">
