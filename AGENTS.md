@@ -38,6 +38,7 @@ The `gamemaster-mcp` command is also available after activating the virtual envi
 - `src/gamemaster_mcp/__init__.py` exposes the package API; `src/gamemaster_mcp/__main__.py` supports running the package as a module.
 - `src/main.py` is a top-level CLI wrapper around the package server.
 - `test_basic.py` contains the current pytest tests for server initialization, storage initialization, and model behavior.
+- `web/` is the Next.js DM screen (see [Web DM screen](#web-dm-screen)); `db/migrations/` holds the Supabase Postgres schema it reads.
 - `docs/` contains development, storage, roadmap, and FastMCP reference documentation.
 - `example/dnd/` contains example campaign documentation.
 
@@ -85,9 +86,21 @@ Tools are defined in `src/gamemaster_mcp/main.py` and registered with the existi
 4. Use or extend a Pydantic model for structured data, and use the `storage` API for campaign/event reads and writes so changes follow the existing persistence flow.
 5. Return a clear string response and add or update pytest coverage for the behavior.
 
+## Web DM screen
+
+`/web` is a mobile-first, dark-theme Next.js (App Router, TypeScript, Tailwind) app deployable to Vercel. It reads and writes the Supabase Postgres tables defined in `db/migrations/` (`campaigns`, `characters`, `npcs`). Pages: campaign picker (`/`), party view with +/- HP buttons (`/c/<id>/party`), and NPC list with tap-to-reveal bio (`/c/<id>/npcs`).
+
+Setup:
+
+1. Apply `db/migrations/*.sql` to your Supabase project.
+2. `cd web && cp .env.example .env.local` and set `DM_PASSWORD` (single-DM password gate), `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` (server-side only; never expose it to the browser).
+3. `npm install`, then `npm run dev` (http://localhost:3000), `npm run build`, `npm run lint`.
+
+For Vercel, set the project root directory to `web` and define the same three environment variables. Each page and server action checks the `dm_auth` cookie via `web/lib/auth.ts`.
+
 ## Roadmap
 
 - Replace or augment JSON file storage with PostgreSQL storage.
 - Support remote deployment over HTTP.
 - Improve MCP tool descriptions.
-- Add a Next.js web UI in `/web`.
+- Extend the Next.js web UI in `/web`.
